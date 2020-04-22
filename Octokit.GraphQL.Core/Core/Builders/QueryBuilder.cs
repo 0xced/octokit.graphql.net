@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -657,11 +657,9 @@ namespace Octokit.GraphQL.Core.Builders
                     // Select the "id" fields for the subquery.
                     var parentSelection = syntax.SelectionStack.Take(syntax.SelectionStack.Count - 1);
                     var idSelection = AddIdSelection(parentSelection.Last());
-                    parentIds = CreateSelectTokensExpression(
-                        parentSelection.OfType<FieldSelection>().Select(x => x.Name).Concat(new[] 
-                        {
-                            idSelection.Alias ?? idSelection.Name
-                        }));
+                    var parentFieldSelections = parentSelection.OfType<FieldSelection>().Select(x => x.Name);
+                    var selections = idSelection == null ? parentFieldSelections : parentFieldSelections.Concat(new[] {idSelection.Alias ?? idSelection.Name});
+                    parentIds = CreateSelectTokensExpression(selections);
 
                     var pageSize = allPages.PageSize ?? MaxPageSize;
 
@@ -728,11 +726,9 @@ namespace Octokit.GraphQL.Core.Builders
                     // Select the "id" fields for the subquery.
                     var parentSelection = syntax.SelectionStack.Take(syntax.SelectionStack.Count - 1);
                     var idSelection = AddIdSelection(parentSelection.Last());
-                    parentIds = CreateSelectTokensExpression(
-                        parentSelection.OfType<FieldSelection>().Select(x => x.Name).Concat(new[]
-                        {
-                            idSelection.Alias ?? idSelection.Name
-                        }));
+                    var parentFieldSelections = parentSelection.OfType<FieldSelection>().Select(x => x.Name);
+                    var selections = idSelection == null ? parentFieldSelections : parentFieldSelections.Concat(new[] {idSelection.Alias ?? idSelection.Name});
+                    parentIds = CreateSelectTokensExpression(selections);
 
                     var pageSize = allPages.PageSize ?? MaxPageSize;
 
@@ -1032,9 +1028,8 @@ namespace Octokit.GraphQL.Core.Builders
         {
             var result = set.Selections.OfType<FieldSelection>().FirstOrDefault(x => x.Name == "id");
 
-            if (result == null)
+            if (result != null)
             {
-                result = new FieldSelection("id", null);
                 set.Selections.Insert(0, result);
             }
 
