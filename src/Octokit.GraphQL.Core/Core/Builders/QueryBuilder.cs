@@ -656,12 +656,21 @@ namespace Octokit.GraphQL.Core.Builders
 
                     // Select the "id" fields for the subquery.
                     var parentSelection = syntax.SelectionStack.Take(syntax.SelectionStack.Count - 1);
-                    var idSelection = AddIdSelection(parentSelection.Last());
-                    parentIds = CreateSelectTokensExpression(
-                        parentSelection.OfType<FieldSelection>().Select(x => x.Name).Concat(new[] 
-                        {
-                            idSelection.Alias ?? idSelection.Name
-                        }));
+                    var selectionSet = parentSelection.LastOrDefault();
+                    var selectId = selectionSet != null;
+                    if (selectId)
+                    {
+                        var idSelection = AddIdSelection(selectionSet);
+                        parentIds = CreateSelectTokensExpression(
+                            parentSelection.OfType<FieldSelection>().Select(x => x.Name).Concat(new[]
+                            {
+                                idSelection.Alias ?? idSelection.Name
+                            }));
+                    }
+                    else
+                    {
+                        parentIds = _ => new JToken[] { new JValue("") };
+                    }
 
                     var pageSize = allPages.PageSize ?? MaxPageSize;
 
@@ -672,7 +681,7 @@ namespace Octokit.GraphQL.Core.Builders
                     syntax.Head.Selections.Add(PageInfoSelection());
 
                     // Create the subquery
-                    subquery = AddSubquery(allPages.Method, expression, instance.AddIndexer("pageInfo"), pageSize);
+                    subquery = AddSubquery(allPages.Method, expression, instance.AddIndexer("pageInfo"), selectId, pageSize);
 
                     // And continue the query as normal after selecting "nodes".
                     syntax.AddField("nodes");
@@ -727,12 +736,21 @@ namespace Octokit.GraphQL.Core.Builders
 
                     // Select the "id" fields for the subquery.
                     var parentSelection = syntax.SelectionStack.Take(syntax.SelectionStack.Count - 1);
-                    var idSelection = AddIdSelection(parentSelection.Last());
-                    parentIds = CreateSelectTokensExpression(
-                        parentSelection.OfType<FieldSelection>().Select(x => x.Name).Concat(new[]
-                        {
-                            idSelection.Alias ?? idSelection.Name
-                        }));
+                    var selectionSet = parentSelection.LastOrDefault();
+                    var selectId = selectionSet != null;
+                    if (selectId)
+                    {
+                        var idSelection = AddIdSelection(selectionSet);
+                        parentIds = CreateSelectTokensExpression(
+                            parentSelection.OfType<FieldSelection>().Select(x => x.Name).Concat(new[]
+                            {
+                                idSelection.Alias ?? idSelection.Name
+                            }));
+                    }
+                    else
+                    {
+                        parentIds = _ => new JToken[] { new JValue("") };
+                    }
 
                     var pageSize = allPages.PageSize ?? MaxPageSize;
 
@@ -743,7 +761,7 @@ namespace Octokit.GraphQL.Core.Builders
                     syntax.Head.Selections.Add(PageInfoSelection());
 
                     // Create the subquery
-                    subquery = AddSubquery(allPages.Method, expression, instance.AddIndexer("pageInfo"), pageSize);
+                    subquery = AddSubquery(allPages.Method, expression, instance.AddIndexer("pageInfo"), selectId: selectionSet != null, pageSize);
 
                     // And continue the query as normal after selecting "nodes".
                     syntax.AddField("nodes");
@@ -1045,13 +1063,14 @@ namespace Octokit.GraphQL.Core.Builders
             MethodCallExpression expression,
             MethodCallExpression selector,
             Expression pageInfoSelector,
+            bool selectId,
             int pageSize)
         {
             // Create a lambda that selects the "pageInfo" fields.
             var parentPageInfo = CreatePageInfoExpression();
 
             // Create the actual subquery.
-            var nodeQuery = CreateNodeQuery(expression, selector, pageSize);
+            var nodeQuery = CreateNodeQuery(expression, selector, selectId, pageSize);
             var subqueryBuilder = new QueryBuilder();
             var subquery = subqueryBuilder.BuildSubquery(nodeQuery, parentIds, parentPageInfo);
             subqueries.Add(subquery);
@@ -1069,6 +1088,7 @@ namespace Octokit.GraphQL.Core.Builders
         private Expression CreateNodeQuery(
             MethodCallExpression expression,
             MethodCallExpression selector,
+            bool selectId,
             int pageSize)
         {
             // Given an expression such as:
@@ -1087,23 +1107,33 @@ namespace Octokit.GraphQL.Core.Builders
             //   .Issues(first: 100, after: Var("__after"))
             //   .Select(x => x.Name);
             //
+            // or, if the selectId argument is false:
+            //
+            // new Query()
+            //   .Issues(first: 100, after: Var("__after"))
+            //   .Select(x => x.Name);
+            //
             // The passed in `expression` parameter is the part before `AllPages()` and the
             // `selector` parameter is the `x => x.Name` selector.
 
             // Get the `Repository` type in the example above.
             var nodeType = expression.Object.Type;
 
-            // First create the expression `new Query().Node(Var("__id"))`
-            Expression rewritten = Expression.Call(
-                rootExpression,
-                "Node",
-                null,
-                Expression.Constant(new Arg<ID>("__id", false)));
+            var rewritten = rootExpression;
+            if (selectId)
+            {
+                // First create the expression `new Query().Node(Var("__id"))`
+                rewritten = Expression.Call(
+                    rootExpression,
+                    "Node",
+                    null,
+                    Expression.Constant(new Arg<ID>("__id", false)));
 
-            // Add `.Cast<nodeType>`.
-            rewritten = Expression.Call(
-                QueryableInterfaceExtensions.CastMethod.MakeGenericMethod(nodeType),
-                rewritten);
+                // Add `.Cast<nodeType>`.
+                rewritten = Expression.Call(
+                    QueryableInterfaceExtensions.CastMethod.MakeGenericMethod(nodeType),
+                    rewritten);
+            }
 
             // Rewrite the method to add the `first: pageSize` and `after: Var("__after")`
             // parameters, and make it be called on `rewritten`.
