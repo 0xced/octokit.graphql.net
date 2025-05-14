@@ -66,6 +66,25 @@ namespace Octokit.GraphQL.IntegrationTests
             var result = await Connection.Run(query, vars);
         }
 
+        [IntegrationTest]
+        public async Task Should_Query_AllPages()
+        {
+            var query = new Query().Search("repo:octokit/octokit.graphql.net commenter:grokys is:issue", type: SearchType.Issue)
+                .AllPages(pageSize: 10)
+                .Select(page => new
+                {
+                    Issue = page.Switch<IssueSummary>(when => when.Issue(issue => new IssueSummary { Number = issue.Number })),
+                })
+                .Compile();
+
+            var result = await Connection.Run(query);
+        }
+
+        public class IssueSummary
+        {
+            public int Number { get; set; }
+        }
+
         public class PullRequestListItem
         {
             public int Number { get; set; }
