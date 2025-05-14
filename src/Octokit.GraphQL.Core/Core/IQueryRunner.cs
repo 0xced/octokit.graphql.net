@@ -1,11 +1,11 @@
-﻿using System;
+﻿using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Octokit.GraphQL.Core
 {
     /// <summary>
-    /// Runns a potentially paged query.
+    /// Runs a potentially paged query.
     /// </summary>
     public interface IQueryRunner
     {
@@ -25,9 +25,9 @@ namespace Octokit.GraphQL.Core
     }
 
     /// <summary>
-    /// Runns a potentially paged query.
+    /// Runs a potentially paged query.
     /// </summary>
-    public interface IQueryRunner<out TResult> : IQueryRunner
+    public interface IQueryRunner<out TResult> : IQueryRunner, IAsyncEnumerable<TResult>
     {
         /// <summary>
         /// Gets the result of the query.

@@ -101,11 +101,13 @@ namespace Octokit.GraphQL.Core
             return Start(connection, variables);
         }
 
-        class Runner : IQueryRunner<TResult>
+        class Runner : IQueryRunner<TResult>, IAsyncEnumerator<TResult>
         {
             readonly SimpleQuery<TResult> parent;
             readonly IConnection connection;
             readonly IDictionary<string, object> variables;
+            private CancellationToken _cancellationToken;
+            private bool _hasNext = true;
 
             public Runner(
                 SimpleQuery<TResult> parent,
@@ -131,6 +133,30 @@ namespace Octokit.GraphQL.Core
                 Result = deserializer.Deserialize(parent.ResultBuilder, data);
                 return false;
             }
+
+            /// <inheritdoc />
+            public IAsyncEnumerator<TResult> GetAsyncEnumerator(CancellationToken cancellationToken)
+            {
+                _cancellationToken = cancellationToken;
+                return this;
+            }
+
+            /// <inheritdoc />
+            public ValueTask DisposeAsync() => default;
+
+            /// <inheritdoc />
+            public async ValueTask<bool> MoveNextAsync()
+            {
+                var hasNext = _hasNext;
+                if (hasNext)
+                {
+                    _hasNext = await RunPage(_cancellationToken);
+                }
+                return hasNext;
+            }
+
+            /// <inheritdoc />
+            public TResult Current => Result;
         }
     }
 }

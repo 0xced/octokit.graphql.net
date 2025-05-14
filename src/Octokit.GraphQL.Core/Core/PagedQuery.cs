@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -14,7 +14,7 @@ namespace Octokit.GraphQL.Core
     /// <remarks>
     /// A paged query consists of a master query and any number of sub-queries (which may
     /// themselves be paged queries). When the full set of results cannot be returned by
-    /// the master query, the sub-queries are run on order to page in the additional data.
+    /// the master query, the sub-queries are run in order to page in the additional data.
     /// </remarks>
     public class PagedQuery<TResult> : ICompiledQuery<TResult>
     {
@@ -69,7 +69,7 @@ namespace Octokit.GraphQL.Core
             return Start(connection, variables);
         }
 
-        protected class Runner : IQueryRunner<TResult>, ISubqueryRunner
+        protected class Runner : IQueryRunner<TResult>, ISubqueryRunner, IAsyncEnumerator<TResult>
         {
             readonly PagedQuery<TResult> owner;
             readonly IConnection connection;
@@ -77,6 +77,7 @@ namespace Octokit.GraphQL.Core
             Stack<IQueryRunner> subqueryRunners;
             Dictionary<ISubquery, List<Action<object>>> subqueryResultSinks;
             private bool hasMore;
+            private CancellationToken _cancellationToken;
 
             public Runner(
                 PagedQuery<TResult> owner,
@@ -143,6 +144,8 @@ namespace Octokit.GraphQL.Core
                         hasMore = (bool)pageInfo["hasNextPage"];
                         Variables["__after"] = (string)pageInfo["endCursor"];
                     }
+
+                    Current = Result;
                 }
                 else if (subqueryRunners.Any())
                 {
@@ -154,6 +157,9 @@ namespace Octokit.GraphQL.Core
                     {
                         subqueryRunners.Pop();
                     }
+
+                    Current = (TResult)runner.Result;
+                    return true;
                 }
 
                 return subqueryRunners.Count > 0 || hasMore;
@@ -170,6 +176,22 @@ namespace Octokit.GraphQL.Core
 
                 value.Add(add);
             }
+
+            /// <inheritdoc />
+            public IAsyncEnumerator<TResult> GetAsyncEnumerator(CancellationToken cancellationToken)
+            {
+                _cancellationToken = cancellationToken;
+                return this;
+            }
+
+            /// <inheritdoc />
+            public ValueTask DisposeAsync() => default;
+
+            /// <inheritdoc />
+            public async ValueTask<bool> MoveNextAsync() => await RunPage(_cancellationToken);
+
+            /// <inheritdoc />
+            public TResult Current { get; private set; }
         }
     }
 }
